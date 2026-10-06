@@ -239,15 +239,29 @@ func New(sessions []db.Session, source Source, cfg config.TUI) Model {
 	return m
 }
 
-// TranscriptsIn marks the sessions whose JSONL transcript Claude Code has
-// deleted from dir, its projects directory: claude -r cannot resume them.
-func (m Model) TranscriptsIn(dir string) Model {
+// TranscriptsIn marks the sessions whose JSONL transcript is not in own,
+// Claude Code's projects directory: claude -r cannot resume them, whether
+// it was deleted or sits in one of the extra trees recall imports from.
+func (m Model) TranscriptsIn(own string, extra ...string) Model {
 	for i := range m.rows {
 		r := &m.rows[i]
-		_, err := os.Stat(filepath.Join(dir, r.s.Project, r.s.ID+".jsonl"))
+		_, err := os.Stat(transcriptPath(own, r.s))
 		r.noTranscript = errors.Is(err, fs.ErrNotExist)
+		r.otherTree = false
+		for _, dir := range extra {
+			if !r.noTranscript || r.otherTree {
+				break
+			}
+			if _, err := os.Stat(transcriptPath(dir, r.s)); err == nil {
+				r.otherTree = true
+			}
+		}
 	}
 	return m
+}
+
+func transcriptPath(dir string, s db.Session) string {
+	return filepath.Join(dir, s.Project, s.ID+".jsonl")
 }
 
 // RememberIn makes the model keep its state (the detail pane height) in the
@@ -717,6 +731,9 @@ func (m *Model) sessionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			text := "Folder no longer exists: " + tildePath(r.s.ProjectPath, m.home)
 			if !r.gone {
 				text = "Claude Code has deleted its transcript"
+				if r.otherTree {
+					text = "Its transcript is outside Claude Code's projects directory"
+				}
 			}
 			if k := m.hintKeys("{recall.0}"); k != "" {
 				text += " · " + k + " recalls it in a new claude"

@@ -270,6 +270,32 @@ func TestEnterRefusesDeletedTranscript(t *testing.T) {
 	}
 }
 
+// A transcript in another tree is not deleted, but is still out of reach.
+func TestEnterRefusesTranscriptInAnotherTree(t *testing.T) {
+	s := db.Session{ID: "cccccccc-3333", Project: "-home-me-work", ProjectPath: t.TempDir(),
+		GitBranch: "main", FirstPrompt: "ran in the container", MessageCount: 5, FileSize: 100,
+		StartedAt: now.Add(-time.Hour), EndedAt: now}
+	m := New([]db.Session{s}, &fakePreview{}, config.Default().TUI)
+	m.now = func() time.Time { return now }
+	m = update(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+
+	extra := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(extra, s.Project), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(extra, s.Project, s.ID+".jsonl"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m = m.TranscriptsIn(t.TempDir(), extra) // Claude Code's own tree is empty
+
+	if r := m.current(); !r.otherTree || r.resumable() || r.transcriptNote() != "elsewhere" {
+		t.Fatalf("otherTree %v resumable %v note %q", r.otherTree, r.resumable(), r.transcriptNote())
+	}
+	if r := press(t, m, "enter"); r.Result != nil || !strings.Contains(r.toast, "outside Claude Code's projects directory") {
+		t.Fatalf("result %+v toast %q", r.Result, r.toast)
+	}
+}
+
 func TestFooterStrikesResumeForDeletedTranscript(t *testing.T) {
 	m, _ := newTestModel(t, config.Default().TUI, 200, 30)
 	m = withTranscripts(t, m)

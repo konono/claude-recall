@@ -594,7 +594,9 @@ func runTUI(o *options, c *cobra.Command) error {
 		self[0] = exe
 		model = model.AskWith(self, filepath.Join(filepath.Dir(config.StatePath()), "ask"))
 	}
-	model = model.RecallWith(self).TranscriptsIn(config.ProjectsDir())
+	// ProjectsDirsPaths leads with ProjectsDir, so the rest are the extra
+	// trees: without the setting there are none and no extra stat.
+	model = model.RecallWith(self).TranscriptsIn(config.ProjectsDir(), o.projectsDirs[1:]...)
 	final, err := tea.NewProgram(model).Run()
 	if err != nil {
 		return err
