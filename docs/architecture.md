@@ -22,9 +22,9 @@ flowchart TD
 
 | State | What happens |
 |---|---|
-| UI or MCP running | Changed transcripts are imported after they stop changing for 300 ms |
+| UI or MCP running | Changed transcripts are imported after they stop changing for 300 ms. The watcher follows Claude Code's own tree only, not the ones `extra_projects_dirs` adds |
 | A session ends | The plugin's `SessionEnd` hook runs `recall import` |
-| UI or MCP starts | A full import catches up on everything written in the meantime, in the background |
+| UI or MCP starts | A full import catches up on everything written in the meantime, in the background, over every tree |
 
 The watcher polls file sizes and mtimes every 250 ms; see [ADR-002](adr/002-fs-watch-for-realtime-updates.md). Every Claude Code session runs its own `recall mcp`, so several importers often run at once: writers take the write lock at BEGIN and wait for it, and a session that fails to import does not stop the others.
 

@@ -182,9 +182,10 @@ func TestLoadCoreAndUI(t *testing.T) {
 		t.Fatalf("got %+v, %v", got, err)
 	}
 	for body, want := range map[string]string{
-		"[core]\ndb = \"vault.db\"\n": "core.db must be an absolute path or start with ~/",
-		"[ui]\nport = 0\n":            "ui.port must be between 1 and 65535",
-		"[ui]\nport = 70000\n":        "ui.port must be between 1 and 65535",
+		"[core]\ndb = \"vault.db\"\n":                    "core.db must be an absolute path or start with ~/",
+		"[core]\nextra_projects_dirs = [\"projects\"]\n": "core.extra_projects_dirs must hold absolute paths or paths starting with ~/",
+		"[ui]\nport = 0\n":                               "ui.port must be between 1 and 65535",
+		"[ui]\nport = 70000\n":                           "ui.port must be between 1 and 65535",
 	} {
 		os.WriteFile(path, []byte(body), 0o644)
 		if _, err := LoadCore(path); err == nil || !strings.Contains(err.Error(), want) {
@@ -209,6 +210,16 @@ func TestLoadCoreLeavesTUIValuesToTheTUI(t *testing.T) {
 		if _, err := LoadCore(path); err == nil {
 			t.Errorf("%q: expected an error", body)
 		}
+	}
+}
+
+// Claude Code's own tree leads and is kept once, however the file names it.
+func TestProjectsDirsPaths(t *testing.T) {
+	t.Setenv("HOME", "/home/me")
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	got := File{Core: Core{ExtraProjectsDirs: []string{"~/elsewhere", "/home/me/.claude/projects"}}}.ProjectsDirsPaths()
+	if want := []string{"/home/me/.claude/projects", "/home/me/elsewhere"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }
 

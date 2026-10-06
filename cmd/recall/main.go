@@ -78,6 +78,7 @@ type options struct {
 	limit, port                                    int
 	dryRun, foreground                             bool
 	limitSet                                       bool
+	projectsDirs                                   []string // from the config file, not a flag
 }
 
 // limitArg is the --limit given, or nil to use the command's default.
@@ -123,6 +124,7 @@ Run without a command, it opens the TUI.`,
 		if f := c.Flags().Lookup("port"); f != nil && !f.Changed {
 			o.port = cfg.UI.Port
 		}
+		o.projectsDirs = cfg.ProjectsDirsPaths()
 		return nil
 	}
 
@@ -309,18 +311,18 @@ func openWrite(o *options) (*db.DB, error) { return db.Open(o.db, db.Options{}) 
 // take a while, and Claude Code gives an MCP server 30 seconds to start. A
 // failed import is reported and the server keeps running; the watcher
 // imports the session again when it changes.
-func catchUp(d *db.DB, w io.Writer) {
-	if err := importer.Run(d, importer.Options{ProjectsDir: config.ProjectsDir()}, w); err != nil {
+func catchUp(o *options, d *db.DB, w io.Writer) {
+	if err := importer.Run(d, importer.Options{ProjectsDirs: o.projectsDirs}, w); err != nil {
 		fmt.Fprintln(os.Stderr, "recall: import:", err)
 	}
 }
 
 func runImport(o *options, stdout io.Writer) error {
 	opts := importer.Options{
-		ProjectsDir: config.ProjectsDir(),
-		Session:     o.session,
-		Project:     o.project,
-		DryRun:      o.dryRun,
+		ProjectsDirs: o.projectsDirs,
+		Session:      o.session,
+		Project:      o.project,
+		DryRun:       o.dryRun,
 	}
 	if o.dryRun {
 		return importer.Run(nil, opts, stdout)
@@ -439,7 +441,7 @@ func runMCP(o *options) error {
 	w := &watcher.Watcher{DB: d, ProjectsDir: config.ProjectsDir()}
 	go w.Run(ctx)
 	// The import summary goes to stderr: stdout carries the protocol.
-	go catchUp(d, os.Stderr)
+	go catchUp(o, d, os.Stderr)
 	return mcp.Run(ctx, d)
 }
 
@@ -505,7 +507,7 @@ func serveUI(o *options, stdout io.Writer) error {
 	defer stop()
 	s := web.New(d, config.ProjectsDir())
 	s.Shutdown = stop
-	go catchUp(d, stdout)
+	go catchUp(o, d, stdout)
 	return s.Serve(ctx, ln)
 }
 

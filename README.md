@@ -191,7 +191,7 @@ The archive is `~/.claude/vault.db`. Sessions whose JSONL Claude Code has delete
 sqlite3 ~/.claude/vault.db ".backup '/path/to/backup.db'"
 ```
 
-Sessions are imported from `~/.claude/projects` (`$CLAUDE_CONFIG_DIR/projects` when Claude Code runs with `CLAUDE_CONFIG_DIR`); [docs/architecture.md](docs/architecture.md#sync-timing) says when. The archive stays in `~/.claude` either way; `db` in the [config file](#configuration) moves it.
+Sessions are imported from `~/.claude/projects` (`$CLAUDE_CONFIG_DIR/projects` when Claude Code runs with `CLAUDE_CONFIG_DIR`), and from any tree `extra_projects_dirs` in the [config file](#configuration) adds, such as one a container writes; [docs/architecture.md](docs/architecture.md#sync-timing) says when. The archive stays in `~/.claude` either way; `db` moves it.
 
 | Stored | Excluded |
 |--------|----------|

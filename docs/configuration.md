@@ -34,6 +34,10 @@ Each at its default, so a line copied from here changes nothing until its value 
 # The archive database, for every command, the MCP server and the web UI,
 # unless --db says otherwise: an absolute path or one starting with ~/.
 db = "~/.claude/vault.db"
+# Transcript trees to import besides Claude Code's own: absolute paths or
+# paths starting with ~/. For transcripts written outside this machine's
+# ~/.claude, such as a container with the directory bind-mounted.
+extra_projects_dirs = []
 
 [ui]
 # Where the web UI (recall ui) listens, and where recall ui stop and

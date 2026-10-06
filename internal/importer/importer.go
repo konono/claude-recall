@@ -150,17 +150,20 @@ func atob(s string) ([]byte, error) {
 
 // Options selects what Run imports.
 type Options struct {
-	ProjectsDir string
-	Session     string // a session ID or its prefix
-	Project     string // case-insensitive substring of the project dir name
-	DryRun      bool
+	ProjectsDirs []string // the transcript trees to import
+	Session      string   // a session ID or its prefix
+	Project      string   // case-insensitive substring of the project dir name
+	DryRun       bool
 }
 
 // Run imports every transcript that matches opts and prints a summary. d
 // may be nil for a dry run. A session that fails to import does not stop the
 // others; Run reports how many failed and returns the first error.
 func Run(vault *db.DB, opts Options, w io.Writer) error {
-	all := parser.Discover(opts.ProjectsDir)
+	var all []parser.File
+	for _, dir := range opts.ProjectsDirs {
+		all = append(all, parser.Discover(dir)...)
+	}
 	targets := all
 	switch {
 	case opts.Session != "":
@@ -197,20 +200,23 @@ func Run(vault *db.DB, opts Options, w io.Writer) error {
 
 	fmt.Fprintf(w, "Syncing %d sessions...\n", len(targets))
 
+	// Grouped by the directory holding them, not by project: the same
+	// project in two trees has a sessions-index.json in each.
 	var order []string
-	byProject := map[string][]parser.File{}
+	byDir := map[string][]parser.File{}
 	for _, t := range targets {
-		if _, ok := byProject[t.Project]; !ok {
-			order = append(order, t.Project)
+		dir := filepath.Dir(t.Path)
+		if _, ok := byDir[dir]; !ok {
+			order = append(order, dir)
 		}
-		byProject[t.Project] = append(byProject[t.Project], t)
+		byDir[dir] = append(byDir[dir], t)
 	}
 
 	var imported, messages, unchanged, skipped, failed int
 	var firstErr error
-	for _, project := range order {
-		index := parser.LoadIndex(filepath.Join(opts.ProjectsDir, project))
-		for _, f := range byProject[project] {
+	for _, dir := range order {
+		index := parser.LoadIndex(dir)
+		for _, f := range byDir[dir] {
 			r, err := ImportFile(vault, f.Path, index[f.SessionID])
 			if err != nil {
 				failed++

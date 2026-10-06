@@ -13,9 +13,11 @@ import (
 	"github.com/babarot/claude-recall/internal/db"
 )
 
-func userLine(text, uuid, ts string) string {
+func userLine(text, uuid, ts string) string { return sessionLine("sess-001", text, uuid, ts) }
+
+func sessionLine(sessionID, text, uuid, ts string) string {
 	b, _ := json.Marshal(map[string]any{
-		"type": "user", "uuid": uuid, "sessionId": "sess-001", "timestamp": ts, "cwd": "/home/user/project",
+		"type": "user", "uuid": uuid, "sessionId": sessionID, "timestamp": ts, "cwd": "/home/user/project",
 		"version": "2.1.87", "gitBranch": "main", "message": map[string]any{"role": "user", "content": text},
 	})
 	return string(b)
@@ -134,7 +136,7 @@ func TestRunSummary(t *testing.T) {
 	os.WriteFile(filepath.Join(filepath.Dir(e.path), "broken.jsonl"), []byte("nope\n"), 0o644)
 
 	var out bytes.Buffer
-	if err := Run(e.db, Options{ProjectsDir: projects}, &out); err != nil {
+	if err := Run(e.db, Options{ProjectsDirs: []string{projects}}, &out); err != nil {
 		t.Fatal(err)
 	}
 	want := "Syncing 2 sessions...\nImported 1 sessions (1 messages). Skipped 1 unreadable files.\n"
@@ -210,7 +212,7 @@ func TestConcurrentImportsFromSeparateConnections(t *testing.T) {
 				return
 			}
 			defer d.Close()
-			errs <- Run(d, Options{ProjectsDir: projects}, io.Discard)
+			errs <- Run(d, Options{ProjectsDirs: []string{projects}}, io.Discard)
 		}()
 	}
 	for range workers {
@@ -223,5 +225,39 @@ func TestConcurrentImportsFromSeparateConnections(t *testing.T) {
 	s, err := d.Sessions()
 	if err != nil || len(s) != 60 {
 		t.Fatalf("sessions %d %v", len(s), err)
+	}
+}
+
+func writeIndex(t *testing.T, projectDir, sessionID, summary string) {
+	t.Helper()
+	b, _ := json.Marshal(map[string]any{"entries": []any{map[string]any{"sessionId": sessionID, "summary": summary}}})
+	if err := os.WriteFile(filepath.Join(projectDir, "sessions-index.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Both trees encode the working directory the same way, so the sessions
+// land under the one project. Each tree holds its own sessions-index.json,
+// so the one next to the transcript is the one that must be read.
+func TestRunImportsEveryProjectsDir(t *testing.T) {
+	e := newEnv(t, userLine("from the host", "u1", "2026-01-01T00:00:00Z"))
+	hostProject := filepath.Dir(e.path)
+	writeIndex(t, hostProject, "sess-001", "summarised on the host")
+
+	otherProject := filepath.Join(t.TempDir(), "my-project")
+	os.MkdirAll(otherProject, 0o755)
+	os.WriteFile(filepath.Join(otherProject, "sess-002.jsonl"),
+		[]byte(sessionLine("sess-002", "from the container", "u2", "2026-01-01T00:00:01Z")+"\n"), 0o644)
+	writeIndex(t, otherProject, "sess-002", "summarised in the container")
+
+	dirs := []string{filepath.Dir(hostProject), filepath.Dir(otherProject)}
+	if err := Run(e.db, Options{ProjectsDirs: dirs}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]string{"sess-001": "summarised on the host", "sess-002": "summarised in the container"} {
+		s, _, err := e.db.ExportSession(id)
+		if err != nil || s == nil || s.Project != "my-project" || s.Summary == nil || *s.Summary != want {
+			t.Fatalf("%s: %+v, %v", id, s, err)
+		}
 	}
 }

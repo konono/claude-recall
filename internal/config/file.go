@@ -114,6 +114,9 @@ type Core struct {
 	// DB is the archive database: an absolute path or one starting with ~/.
 	// Empty means DefaultDBPath.
 	DB string `toml:"db"`
+	// ExtraProjectsDirs are transcript trees to import besides Claude
+	// Code's own: absolute paths or ones starting with ~/.
+	ExtraProjectsDirs []string `toml:"extra_projects_dirs"`
 }
 
 // UI configures the web UI.
@@ -160,7 +163,7 @@ type TUI struct {
 
 // Default returns the settings used when the config file is absent.
 func Default() File {
-	return File{UI: UI{Port: DefaultPort}, TUI: TUI{DetailPosition: DetailBottom, DetailAutoWidth: 160, Theme: theme.Auto, DetailHeight: 16, Scope: ScopeFolder,
+	return File{Core: Core{ExtraProjectsDirs: []string{}}, UI: UI{Port: DefaultPort}, TUI: TUI{DetailPosition: DetailBottom, DetailAutoWidth: 160, Theme: theme.Auto, DetailHeight: 16, Scope: ScopeFolder,
 		AskModel: "sonnet-5.5", AskShowCost: true, AskReasons: true, ScrollbarThumb: ThumbHeavy}}
 }
 
@@ -174,6 +177,21 @@ func (f File) DBPath() string {
 		return filepath.Join(homeDir(), f.Core.DB[2:])
 	}
 	return f.Core.DB
+}
+
+// ProjectsDirsPaths are the transcript trees to import: Claude Code's own
+// first, then the ones the file adds, with ~/ expanded and each kept once.
+func (f File) ProjectsDirsPaths() []string {
+	out := []string{ProjectsDir()}
+	for _, d := range f.Core.ExtraProjectsDirs {
+		if strings.HasPrefix(d, "~/") {
+			d = filepath.Join(homeDir(), d[2:])
+		}
+		if !slices.Contains(out, d) {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // FilePath returns the config file location, honoring XDG_CONFIG_HOME.
@@ -194,6 +212,10 @@ const Template = `# claude-recall settings. Uncomment a line to change it.
 # The archive database, for every command, the MCP server and the web UI,
 # unless --db says otherwise: an absolute path or one starting with ~/.
 # db = "~/.claude/vault.db"
+# Transcript trees to import besides Claude Code's own: absolute paths or
+# paths starting with ~/. For transcripts written outside this machine's
+# ~/.claude, such as a container with the directory bind-mounted.
+# extra_projects_dirs = []
 
 [ui]
 # Where the web UI (recall ui) listens, and where recall ui stop and
@@ -339,6 +361,11 @@ func LoadCore(path string) (File, error) {
 	var ps Problems
 	if db := cfg.Core.DB; db != "" && !strings.HasPrefix(db, "~/") && !filepath.IsAbs(db) {
 		ps = append(ps, problem("core.db", "core.db must be an absolute path or start with ~/, got %q", db))
+	}
+	for _, d := range cfg.Core.ExtraProjectsDirs {
+		if !strings.HasPrefix(d, "~/") && !filepath.IsAbs(d) {
+			ps = append(ps, problem("core.extra_projects_dirs", "core.extra_projects_dirs must hold absolute paths or paths starting with ~/, got %q", d))
+		}
 	}
 	if p := cfg.UI.Port; p < 1 || p > 65535 {
 		ps = append(ps, problem("ui.port", "ui.port must be between 1 and 65535, got %d", p))
